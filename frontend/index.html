@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vigneshwara Youth</title>
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.development.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.development.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/axios@1.6.7/dist/axios.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.23.9/babel.min.js"></script>
+  <style>
+    .gradient-bg {
+      background: linear-gradient(135deg, #1e3a8a, #3b82f6);
+    }
+    .card-shadow {
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    }
+    .hover-scale {
+      transition: transform 0.2s;
+    }
+    .hover-scale:hover {
+      transform: scale(1.05);
+    }
+    .table-row:hover {
+      background-color: #f1f5f9;
+    }
+    .gradient-text {
+      background: linear-gradient(to right, #3b82f6, #1e3a8a);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+  </style>
+</head>
+<body class="gradient-bg min-h-screen">
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // Supabase client initialization
+    const supabaseClient = supabase.createClient('https://tfdxzakwlhzsmwwwmull.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRmZHh6YWt3bGh6c213d3dtdWxsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ1MDAxMzEsImV4cCI6MjA3MDA3NjEzMX0.8ixbymPA53SChvcYk_Y-xX-6xI8006bDF7oi0UAmjgo');
+
+    // Backend API URL
+    const API_URL = 'http://localhost:5000/api'; // Change to Render URL after deployment
+
+    // Main App Component
+    function App() {
+      const [user, setUser] = useState(null);
+      const [isAdmin, setIsAdmin] = useState(false);
+      const [view, setView] = useState('login');
+
+      useEffect(() => {
+        const session = supabaseClient.auth.getSession();
+        session.then(({ data }) => {
+          if (data.session) {
+            setUser(data.session.user);
+            checkAdminStatus(data.session.user.id);
+          }
+        });
+
+        supabaseClient.auth.onAuthStateChange((event, session) => {
+          setUser(session ? session.user : null);
+          if (session) checkAdminStatus(session.user.id);
+        });
+      }, []);
+
+      const checkAdminStatus = async (userId) => {
+        try {
+          console.log('Checking admin status for userId:', userId);
+          const response = await axios.get(`${API_URL}/users/${userId}/role`);
+          console.log('Role response:', response.data);
+          setIsAdmin(response.data.role === 'admin');
+        } catch (error) {
+          console.error('Error checking admin status:', error);
+          setIsAdmin(false);
+        }
+      };
+
+      return (
+        <div className="min-h-screen">
+          {user ? (
+            isAdmin ? <AdminDashboard user={user} setView={setView} /> : <UserDashboard user={user} setView={setView} />
+          ) : (
+            <Auth setView={setView} />
+          )}
+        </div>
+      );
+    }
+
+    // Authentication Component
+    function Auth({ setView }) {
+      const [loginType, setLoginType] = useState('email');
+      const [emailOrPhone, setEmailOrPhone] = useState('');
+      const [password, setPassword] = useState('');
+      const [isSignUp, setIsSignUp] = useState(false);
+      const [error, setError] = useState('');
+      const [loading, setLoading] = useState(false);
+
+      const handleAuth = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError('');
+        try {
+          if (isSignUp) {
+            const { error } = await supabaseClient.auth.signUp(
+              loginType === 'email' ? { email: emailOrPhone, password } : { phone: emailOrPhone, password }
+            );
+            if (error) throw error;
+            setView('login');
+            setIsSignUp(false);
+          } else {
+            const { error } = await supabaseClient.auth.signInWithPassword(
+              loginType === 'email' ? { email: emailOrPhone, password } : { phone: emailOrPhone, password }
+            );
+            if (error) throw error;
+          }
+        } catch (err) {
+          setError(err.message.includes('Invalid login') ? 'Failed, try again' : err.message);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      return (
+        <div className="flex flex-col items-center justify-center min-h-screen px-4">
+          <div className="text-center mb-6">
+            <h1 className="text-4xl sm:text-5xl font-bold gradient-text">Vigneshwara Youth</h1>
+            <p className="text-lg sm:text-xl text-white mt-2">Hebbal Camp Kings</p>
+          </div>
+          <div className="bg-white p-6 sm:p-8 rounded-xl card-shadow w-full max-w-md">
+            <h2 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-6 text-center">
+              {isSignUp ? 'Sign Up' : 'Login'}
+            </h2>
+            <div className="flex justify-center mb-4">
+              <button
+                className={`px-3 py-2 text-sm sm:text-base rounded-l-lg ${loginType === 'email' ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}
+                onClick={() => setLoginType('email')}
+              >
+                Email
+              </button>
+              <button
+                className={`px-3 py-2 text-sm sm:text-base rounded-r-lg ${loginType === 'phone' ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}
+                onClick={() => setLoginType('phone')}
+              >
+                Phone
+              </button>
+            </div>
+            <form onSubmit={handleAuth}>
+              <input
+                type={loginType === 'email' ? 'email' : 'tel'}
+                placeholder={loginType === 'email' ? 'Email' : 'Phone Number'}
+                value={emailOrPhone}
+                onChange={(e) => setEmailOrPhone(e.target.value)}
+                className="w-full p-3 mb-4 border rounded-lg text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
+                required
+              />
+              <input
+                type="password"
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full p-3 mb-4 border rounded-lg text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
+                required
+              />
+              <button
+                type="submit"
+                className="w-full bg-blue-600 text-white p-3 rounded-lg text-sm sm:text-base hover:bg-blue-700 hover-scale disabled:bg-blue-400"
+                disabled={loading}
+              >
+                {loading ? 'Processing...' : isSignUp ? 'Sign Up' : 'Login'}
+              </button>
+            </form>
+            {error && <p className="text-red-500 mt-3 text-center text-sm sm:text-base">{error}</p>}
+            <button
+              onClick={() => {
+                setIsSignUp(!isSignUp);
+                setError('');
+              }}
+              className="mt-4 text-blue-600 hover:underline w-full text-center text-sm sm:text-base"
+            >
+              {isSignUp ? 'Already have an account? Login' : 'Need an account? Sign Up'}
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // Admin Dashboard Component
+    function AdminDashboard({ user, setView }) {
+      const [trustBalance, setTrustBalance] = useState(0);
+      const [loans, setLoans] = useState([]);
+      const [newLoan, setNewLoan] = useState({ borrower: '', amount: '', interest: '' });
+      const [expenses, setExpenses] = useState([]);
+      const [newExpense, setNewExpense] = useState({ description: '', amount: '' });
+      const [donations, setDonations] = useState([]);
+      const [newDonation, setNewDonation] = useState({ description: '', amount: '' });
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState('');
+
+      useEffect(() => {
+        fetchDashboardData();
+        setupRealTimeSubscriptions();
+      }, []);
+
+      const fetchDashboardData = async () => {
+        try {
+          const [balanceRes, loansRes, expensesRes, donationsRes] = await Promise.all([
+            axios.get(`${API_URL}/trust/balance`),
+            axios.get(`${API_URL}/loans`),
+            axios.get(`${API_URL}/expenses`),
+            axios.get(`${API_URL}/donations`),
+          ]);
+          setTrustBalance(balanceRes.data.balance);
+          setLoans(loansRes.data);
+          setExpenses(expensesRes.data);
+          setDonations(donationsRes.data);
+          setError('');
+        } catch (error) {
+          console.error('Error fetching dashboard data:', error);
+          setError('Failed to fetch data. Please try again.');
+        }
+      };
+
+      const setupRealTimeSubscriptions = () => {
+        supabaseClient
+          .channel('loans')
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'loans' }, () => {
+            fetchDashboardData();
+          })
+          .subscribe();
+      };
+
+      const addLoan = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError('');
+        try {
+          await axios.post(`${API_URL}/loans`, { ...newLoan, user_id: user.id });
+          setNewLoan({ borrower: '', amount: '', interest: '' });
+          fetchDashboardData();
+        } catch (error) {
+          console.error('Error adding loan:', error);
+          setError(error.response?.data?.error || 'Failed to add loan. Please try again.');
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const addExpense = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError('');
+        try {
+          await axios.post(`${API_URL}/expenses`, { ...newExpense, user_id: user.id });
+          setNewExpense({ description: '', amount: '' });
+          fetchDashboardData();
+        } catch (error) {
+          console.error('Error adding expense:', error);
+          setError(error.response?.data?.error || 'Failed to add expense. Please try again.');
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const addDonation = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError('');
+        try {
+          await axios.post(`${API_URL}/donations`, { ...newDonation, user_id: user.id });
+          setNewDonation({ description: '', amount: '' });
+          fetchDashboardData();
+        } catch (error) {
+          console.error('Error adding donation:', error);
+          setError(error.response?.data?.error || 'Failed to add donation. Please try again.');
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const deleteLoan = async (loanId) => {
+        setLoading(true);
+        setError('');
+        try {
+          await axios.delete(`${API_URL}/loans/${loanId}`, { data: { user_id: user.id } });
+          fetchDashboardData();
+        } catch (error) {
+          console.error('Error deleting loan:', error);
+          setError(error.response?.data?.error || 'Failed to delete loan. Please try again.');
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const deleteExpense = async (expenseId) => {
+        setLoading(true);
+        setError('');
+        try {
+          await axios.delete(`${API_URL}/expenses/${expenseId}`, { data: { user_id: user.id } });
+          fetchDashboardData();
+        } catch (error) {
+          console.error('Error deleting expense:', error);
+          setError(error.response?.data?.error || 'Failed to delete expense. Please try again.');
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const deleteDonation = async (donationId) => {
+        setLoading(true);
+        setError('');
+        try {
+          await axios.delete(`${API_URL}/donations/${donationId}`, { data: { user_id: user.id } });
+          fetchDashboardData();
+        } catch (error) {
+          console.error('Error deleting donation:', error);
+          setError(error.response?.data?.error || 'Failed to delete donation. Please try again.');
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const logout = async () => {
+        await supabaseClient.auth.signOut();
+        setView('login');
+      };
+
+      return (
+        <div className="container mx-auto p-4 sm:p-6 bg-gray-50 min-h-screen">
+          <div className="flex flex-col sm:flex-row justify-between items-center mb-4 sm:mb-6">
+            <div className="text-center sm:text-left mb-4 sm:mb-0">
+              <h1 className="text-3xl sm:text-4xl font-bold gradient-text">Vigneshwara Youth</h1>
+              <p className="text-base sm:text-lg text-gray-700">Hebbal Camp Kings</p>
+              <span className="ml-0 sm:ml-3 bg-blue-100 text-blue-800 text-sm px-2 py-1 rounded inline-block mt-2">Admin</span>
+            </div>
+            <button onClick={logout} className="bg-red-600 text-white px-3 py-2 rounded-lg text-sm sm:text-base hover:bg-red-700 hover-scale">
+              Logout
+            </button>
+          </div>
+          {error && <p className="text-red-500 mb-4 text-center text-sm sm:text-base">{error}</p>}
+          <div className="bg-white p-4 sm:p-6 rounded-xl card-shadow mb-4 sm:mb-6">
+            <h2 className="text-xl sm:text-2xl font-semibold text-gray-800">Trust Balance: ${trustBalance}</h2>
+          </div>
+          <div className="flex flex-col md:grid md:grid-cols-3 gap-4 sm:gap-6 mb-4 sm:mb-6">
+            <div className="bg-white p-4 sm:p-6 rounded-xl card-shadow">
+              <h2 className="text-lg sm:text-xl font-semibold text-gray-800 mb-4">Add Loan</h2>
+              <form onSubmit={addLoan}>
+                <input
+                  type="text"
+                  placeholder="Borrower Name"
+                  value={newLoan.borrower}
+                  onChange={(e) => setNewLoan({ ...newLoan, borrower: e.target.value })}
+                  className="w-full p-2 sm:p-3 mb-3 border rounded-lg text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+                <input
+                  type="number"
+                  placeholder="Amount"
+                  value={newLoan.amount}
+                  onChange={(e) => setNewLoan({ ...newLoan, amount: e.target.value })}
+                  className="w-full p-2 sm:p-3 mb-3 border rounded-lg text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+                <input
+                  type="number"
+                  placeholder="Interest Rate (%)"
+                  value={newLoan.interest}
+                  onChange={(e) => setNewLoan({ ...newLoan, interest: e.target.value })}
+                  className="w-full p-2 sm:p-3 mb-3 border rounded-lg text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+                <button
+                  type="submit"
+                  className="w-full bg-blue-600 text-white p-2 sm:p-3 rounded-lg text-sm sm:text-base hover:bg-blue-700 hover-scale disabled:bg-blue-400"
+                  disabled={loading}
+                >
+                  {loading ? 'Adding...' : 'Add Loan'}
+                </button>
+              </form>
+            </div>
+            <div className="bg-white p-4 sm:p-6 rounded-xl card-shadow">
+              <h2 className="text-lg sm:text-xl font-semibold text-gray-800 mb-4">Add Expense</h2>
+              <form onSubmit={addExpense}>
+                <input
+                  type="text"
+                  placeholder="Description"
+                  value={newExpense.description}
+                  onChange={(e) => setNewExpense({ ...newExpense, description: e.target.value })}
+                  className="w-full p-2 sm:p-3 mb-3 border rounded-lg text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+                <input
+                  type="number"
+                  placeholder="Amount"
+                  value={newExpense.amount}
+                  onChange={(e) => setNewExpense({ ...newExpense, amount: e.target.value })}
+                  className="w-full p-2 sm:p-3 mb-3 border rounded-lg text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+                <button
+                  type="submit"
+                  className="w-full bg-blue-600 text-white p-2 sm:p-3 rounded-lg text-sm sm:text-base hover:bg-blue-700 hover-scale disabled:bg-blue-400"
+                  disabled={loading}
+                >
+                  {loading ? 'Adding...' : 'Add Expense'}
+                </button>
+              </form>
+            </div>
+            <div className="bg-white p-4 sm:p-6 rounded-xl card-shadow">
+              <h2 className="text-lg sm:text-xl font-semibold text-gray-800 mb-4">Add Donation</h2>
+              <form onSubmit={addDonation}>
+                <input
+                  type="text"
+                  placeholder="Description"
+                  value={newDonation.description}
+                  onChange={(e) => setNewDonation({ ...newDonation, description: e.target.value })}
+                  className="w-full p-2 sm:p-3 mb-3 border rounded-lg text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+                <input
+                  type="number"
+                  placeholder="Amount"
+                  value={newDonation.amount}
+                  onChange={(e) => setNewDonation({ ...newDonation, amount: e.target.value })}
+                  className="w-full p-2 sm:p-3 mb-3 border rounded-lg text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+                <button
+                  type="submit"
+                  className="w-full bg-blue-600 text-white p-2 sm:p-3 rounded-lg text-sm sm:text-base hover:bg-blue-700 hover-scale disabled:bg-blue-400"
+                  disabled={loading}
+                >
+                  {loading ? 'Adding...' : 'Add Donation'}
+                </button>
+              </form>
+            </div>
+          </div>
+          <div className="bg-white p-4 sm:p-6 rounded-xl card-shadow mb-4 sm:mb-6">
+            <h2 className="text-lg sm:text-xl font-semibold text-gray-800 mb-4">Loans</h2>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-sm sm:text-base">
+                <thead>
+                  <tr className="bg-gray-100">
+                    <th className="border p-2 sm:p-3 text-left">Borrower</th>
+                    <th className="border p-2 sm:p-3 text-left">Amount</th>
+                    <th className="border p-2 sm:p-3 text-left">Interest</th>
+                    <th className="border p-2 sm:p-3 text-left">Due Date</th>
+                    <th className="border p-2 sm:p-3 text-left">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loans.map((loan, index) => (
+                    <tr key={loan._id} className={`table-row ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                      <td className="border p-2 sm:p-3">{loan.borrower}</td>
+                      <td className="border p-2 sm:p-3">${loan.amount}</td>
+                      <td className="border p-2 sm:p-3">{loan.interest}%</td>
+                      <td className="border p-2 sm:p-3">{new Date(loan.due_date).toLocaleDateString()}</td>
+                      <td className="border p-2 sm:p-3">
+                        <button
+                          onClick={() => deleteLoan(loan._id)}
+                          className="bg-red-600 text-white px-2 sm:px-3 py-1 rounded-lg text-xs sm:text-sm hover:bg-red-700 hover-scale disabled:bg-red-400"
+                          disabled={loading}
+                        >
+                          {loading ? 'Deleting...' : 'Delete'}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div className="bg-white p-4 sm:p-6 rounded-xl card-shadow mb-4 sm:mb-6">
+            <h2 className="text-lg sm:text-xl font-semibold text-gray-800 mb-4">Expenses</h2>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-sm sm:text-base">
+                <thead>
+                  <tr className="bg-gray-100">
+                    <th className="border p-2 sm:p-3 text-left">Description</th>
+                    <th className="border p-2 sm:p-3 text-left">Amount</th>
+                    <th className="border p-2 sm:p-3 text-left">Date</th>
+                    <th className="border p-2 sm:p-3 text-left">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {expenses.map((expense, index) => (
+                    <tr key={expense._id} className={`table-row ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                      <td className="border p-2 sm:p-3">{expense.description}</td>
+                      <td className="border p-2 sm:p-3">${expense.amount}</td>
+                      <td className="border p-2 sm:p-3">{new Date(expense.created_at).toLocaleDateString()}</td>
+                      <td className="border p-2 sm:p-3">
+                        <button
+                          onClick={() => deleteExpense(expense._id)}
+                          className="bg-red-600 text-white px-2 sm:px-3 py-1 rounded-lg text-xs sm:text-sm hover:bg-red-700 hover-scale disabled:bg-red-400"
+                          disabled={loading}
+                        >
+                          {loading ? 'Deleting...' : 'Delete'}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div className="bg-white p-4 sm:p-6 rounded-xl card-shadow">
+            <h2 className="text-lg sm:text-xl font-semibold text-gray-800 mb-4">Donations</h2>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-sm sm:text-base">
+                <thead>
+                  <tr className="bg-gray-100">
+                    <th className="border p-2 sm:p-3 text-left">Description</th>
+                    <th className="border p-2 sm:p-3 text-left">Amount</th>
+                    <th className="border p-2 sm:p-3 text-left">Date</th>
+                    <th className="border p-2 sm:p-3 text-left">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {donations.map((donation, index) => (
+                    <tr key={donation._id} className={`table-row ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                      <td className="border p-2 sm:p-3">{donation.description}</td>
+                      <td className="border p-2 sm:p-3">${donation.amount}</td>
+                      <td className="border p-2 sm:p-3">{new Date(donation.created_at).toLocaleDateString()}</td>
+                      <td className="border p-2 sm:p-3">
+                        <button
+                          onClick={() => deleteDonation(donation._id)}
+                          className="bg-red-600 text-white px-2 sm:px-3 py-1 rounded-lg text-xs sm:text-sm hover:bg-red-700 hover-scale disabled:bg-red-400"
+                          disabled={loading}
+                        >
+                          {loading ? 'Deleting...' : 'Delete'}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // User Dashboard Component
+    function UserDashboard({ user, setView }) {
+      const [trustBalance, setTrustBalance] = useState(0);
+      const [loans, setLoans] = useState([]);
+      const [expenses, setExpenses] = useState([]);
+      const [donations, setDonations] = useState([]);
+      const [notifications, setNotifications] = useState([]);
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState('');
+
+      useEffect(() => {
+        fetchDashboardData();
+        setupRealTimeSubscriptions();
+      }, []);
+
+      const fetchDashboardData = async () => {
+        try {
+          const [balanceRes, loansRes, expensesRes, donationsRes, notificationsRes] = await Promise.all([
+            axios.get(`${API_URL}/trust/balance`),
+            axios.get(`${API_URL}/loans`),
+            axios.get(`${API_URL}/expenses`),
+            axios.get(`${API_URL}/donations`),
+            supabaseClient.from('notifications').select('*').eq('user_id', user.id),
+          ]);
+          setTrustBalance(balanceRes.data.balance);
+          setLoans(loansRes.data.filter(loan => loan.user_id === user.id));
+          setExpenses(expensesRes.data);
+          setDonations(donationsRes.data);
+          setNotifications(notificationsRes.data || []);
+          setError('');
+        } catch (error) {
+          console.error('Error fetching dashboard data:', error);
+          setError('Failed to fetch data. Please try again.');
+        }
+      };
+
+      const setupRealTimeSubscriptions = () => {
+        supabaseClient
+          .channel('notifications')
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` }, (payload) => {
+            setNotifications((prev) => [...prev, payload.new]);
+          })
+          .subscribe();
+        supabaseClient
+          .channel('loans')
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'loans' }, () => {
+            fetchDashboardData();
+          })
+          .subscribe();
+      };
+
+      const deleteLoan = async (loanId) => {
+        setLoading(true);
+        setError('');
+        try {
+          await axios.delete(`${API_URL}/loans/${loanId}`, { data: { user_id: user.id } });
+          fetchDashboardData();
+        } catch (error) {
+          console.error('Error deleting loan:', error);
+          setError(error.response?.data?.error || 'Failed to delete loan. Please try again.');
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const logout = async () => {
+        await supabaseClient.auth.signOut();
+        setView('login');
+      };
+
+      return (
+        <div className="container mx-auto p-4 sm:p-6 bg-gray-50 min-h-screen">
+          <div className="flex flex-col sm:flex-row justify-between items-center mb-4 sm:mb-6">
+            <div className="text-center sm:text-left mb-4 sm:mb-0">
+              <h1 className="text-3xl sm:text-4xl font-bold gradient-text">Vigneshwara Youth</h1>
+              <p className="text-base sm:text-lg text-gray-700">Hebbal Camp Kings</p>
+            </div>
+            <button onClick={logout} className="bg-red-600 text-white px-3 py-2 rounded-lg text-sm sm:text-base hover:bg-red-700 hover-scale">
+              Logout
+            </button>
+          </div>
+          {error && <p className="text-red-500 mb-4 text-center text-sm sm:text-base">{error}</p>}
+          <div className="bg-white p-4 sm:p-6 rounded-xl card-shadow mb-4 sm:mb-6">
+            <h2 className="text-xl sm:text-2xl font-semibold text-gray-800">Trust Balance: ${trustBalance}</h2>
+          </div>
+          <div className="bg-white p-4 sm:p-6 rounded-xl card-shadow mb-4 sm:mb-6">
+            <h2 className="text-lg sm:text-xl font-semibold text-gray-800 mb-4">Your Loans</h2>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-sm sm:text-base">
+                <thead>
+                  <tr className="bg-gray-100">
+                    <th className="border p-2 sm:p-3 text-left">Borrower</th>
+                    <th className="border p-2 sm:p-3 text-left">Amount</th>
+                    <th className="border p-2 sm:p-3 text-left">Interest</th>
+                    <th className="border p-2 sm:p-3 text-left">Due Date</th>
+                    <th className="border p-2 sm:p-3 text-left">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loans.map((loan, index) => (
+                    <tr key={loan._id} className={`table-row ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                      <td className="border p-2 sm:p-3">{loan.borrower}</td>
+                      <td className="border p-2 sm:p-3">${loan.amount}</td>
+                      <td className="border p-2 sm:p-3">{loan.interest}%</td>
+                      <td className="border p-2 sm:p-3">{new Date(loan.due_date).toLocaleDateString()}</td>
+                      <td className="border p-2 sm:p-3">
+                        <button
+                          onClick={() => deleteLoan(loan._id)}
+                          className="bg-red-600 text-white px-2 sm:px-3 py-1 rounded-lg text-xs sm:text-sm hover:bg-red-700 hover-scale disabled:bg-red-400"
+                          disabled={loading}
+                        >
+                          {loading ? 'Deleting...' : 'Delete'}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div className="bg-white p-4 sm:p-6 rounded-xl card-shadow mb-4 sm:mb-6">
+            <h2 className="text-lg sm:text-xl font-semibold text-gray-800 mb-4">Expenses</h2>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-sm sm:text-base">
+                <thead>
+                  <tr className="bg-gray-100">
+                    <th className="border p-2 sm:p-3 text-left">Description</th>
+                    <th className="border p-2 sm:p-3 text-left">Amount</th>
+                    <th className="border p-2 sm:p-3 text-left">Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {expenses.map((expense, index) => (
+                    <tr key={expense._id} className={`table-row ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                      <td className="border p-2 sm:p-3">{expense.description}</td>
+                      <td className="border p-2 sm:p-3">${expense.amount}</td>
+                      <td className="border p-2 sm:p-3">{new Date(expense.created_at).toLocaleDateString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div className="bg-white p-4 sm:p-6 rounded-xl card-shadow mb-4 sm:mb-6">
+            <h2 className="text-lg sm:text-xl font-semibold text-gray-800 mb-4">Donations</h2>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-sm sm:text-base">
+                <thead>
+                  <tr className="bg-gray-100">
+                    <th className="border p-2 sm:p-3 text-left">Description</th>
+                    <th className="border p-2 sm:p-3 text-left">Amount</th>
+                    <th className="border p-2 sm:p-3 text-left">Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {donations.map((donation, index) => (
+                    <tr key={donation._id} className={`table-row ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                      <td className="border p-2 sm:p-3">{donation.description}</td>
+                      <td className="border p-2 sm:p-3">${donation.amount}</td>
+                      <td className="border p-2 sm:p-3">{new Date(donation.created_at).toLocaleDateString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div className="bg-white p-4 sm:p-6 rounded-xl card-shadow">
+            <h2 className="text-lg sm:text-xl font-semibold text-gray-800 mb-4">Notifications</h2>
+            <ul className="list-disc pl-5 text-sm sm:text-base">
+              {notifications.map((notification) => (
+                <li key={notification.id} className="mb-2 text-gray-700">
+                  {notification.message} - {new Date(notification.created_at).toLocaleString()}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      );
+    }
+
+    // Render the App
+    ReactDOM.render(<App />, document.getElementById('root'));
+  </script>
+</body>
+</html>
