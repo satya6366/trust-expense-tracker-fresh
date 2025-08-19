@@ -566,14 +566,10 @@
             axios.get(`${API_URL}/donations`),
             supabaseClient.from('notifications').select('*').eq('user_id', user.id),
           ]);
-          console.log('User ID:', user.id); // Debug user ID
-          console.log('Loans Data:', loansRes.data); // Debug raw loans data
-          const userLoans = loansRes.data.filter(loan => {
-            console.log(`Loan user_id: ${loan.user_id}, Matches: ${loan.user_id === user.id}`);
-            return loan.user_id === user.id;
-          });
+          console.log('User ID:', user.id);
+          console.log('Loans Data:', loansRes.data);
           setTrustBalance(balanceRes.data.balance);
-          setLoans(userLoans);
+          setLoans(loansRes.data); // Removed filter to show all loans
           setExpenses(expensesRes.data);
           setDonations(donationsRes.data);
           setNotifications(notificationsRes.data || []);
@@ -634,7 +630,7 @@
             <h2 className="text-xl sm:text-2xl font-semibold text-gray-800">Trust Balance: ${trustBalance}</h2>
           </div>
           <div className="bg-white p-4 sm:p-6 rounded-xl card-shadow mb-4 sm:mb-6">
-            <h2 className="text-lg sm:text-xl font-semibold text-gray-800 mb-4">Your Loans</h2>
+            <h2 className="text-lg sm:text-xl font-semibold text-gray-800 mb-4">Loans</h2>
             {loans.length === 0 && <p className="text-gray-600">No loans found.</p>}
             <div className="overflow-x-auto">
               <table className="w-full border-collapse text-sm sm:text-base">
