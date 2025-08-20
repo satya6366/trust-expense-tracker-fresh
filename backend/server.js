@@ -28,13 +28,18 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://satya6366:Nani123@clu
 .catch((error) => console.error('MongoDB connection error:', error));
 
 // Schemas
+const trustBalanceSchema = new mongoose.Schema({
+  balance: { type: Number, default: 0 },
+});
+
 const loanSchema = new mongoose.Schema({
   user_id: String,
   borrower: String,
   amount: Number,
-  interest: Number,
+  interest_amount: Number,
   due_date: Date,
   created_at: { type: Date, default: Date.now },
+  is_collected: { type: Boolean, default: false },
 });
 
 const expenseSchema = new mongoose.Schema({
@@ -54,6 +59,7 @@ const userSchema = new mongoose.Schema({
   role: { type: String, default: 'user' },
 });
 
+const TrustBalance = mongoose.model('TrustBalance', trustBalanceSchema);
 const Loan = mongoose.model('Loan', loanSchema);
 const Expense = mongoose.model('Expense', expenseSchema);
 const Donation = mongoose.model('Donation', donationSchema);
@@ -66,13 +72,12 @@ app.get('/', (req, res) => {
 
 app.get('/api/trust/balance', async (req, res) => {
   try {
-    const loans = await Loan.find();
-    const expenses = await Expense.find();
-    const donations = await Donation.find();
-    const totalLoans = loans.reduce((sum, loan) => sum + (loan.amount || 0), 0);
-    const totalExpenses = expenses.reduce((sum, expense) => sum + (expense.amount || 0), 0);
-    const totalDonations = donations.reduce((sum, donation) => sum + (donation.amount || 0), 0);
-    res.json({ balance: totalLoans + totalDonations - totalExpenses });
+    let trustBalance = await TrustBalance.findOne();
+    if (!trustBalance) {
+      trustBalance = new TrustBalance({ balance: 0 });
+      await trustBalance.save();
+    }
+    res.json({ balance: trustBalance.balance });
   } catch (error) {
     console.error('Error fetching balance:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -101,7 +106,7 @@ app.get('/api/loans/user/:userId', async (req, res) => {
 
 app.post('/api/loans', async (req, res) => {
   try {
-    const { user_id } = req.body;
+    const { user_id, borrower, amount, interest_amount } = req.body;
     const { data, error } = await supabase
       .from('users')
       .select('role')
@@ -110,20 +115,25 @@ app.post('/api/loans', async (req, res) => {
     if (error || !data || data.role !== 'admin') {
       return res.status(403).json({ error: 'Only admins can add loans' });
     }
-
-    const { borrower, amount, interest } = req.body;
-    if (!user_id || !borrower || !amount || !interest) {
+    if (!user_id || !borrower || !amount || !interest_amount) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
     const dueDate = new Date();
     dueDate.setMonth(dueDate.getMonth() + 1);
-    const loan = new Loan({ user_id, borrower, amount, interest, due_date: dueDate });
+    const loan = new Loan({ 
+      user_id, 
+      borrower, 
+      amount: parseFloat(amount), 
+      interest_amount: parseFloat(interest_amount), 
+      due_date: dueDate,
+      is_collected: false 
+    });
     await loan.save();
     
     try {
       const { error: notificationError } = await supabase.from('notifications').insert({
         user_id,
-        message: `Loan of $${amount} due on ${dueDate.toLocaleDateString()}`,
+        message: `Loan of ₹${amount} with interest ₹${interest_amount} due on ${dueDate.toLocaleDateString()}`,
       });
       if (notificationError) console.error('Notification error:', notificationError);
     } catch (err) {
@@ -132,6 +142,100 @@ app.post('/api/loans', async (req, res) => {
     res.json(loan);
   } catch (error) {
     console.error('Error adding loan:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.put('/api/loans/:id', async (req, res) => {
+  try {
+    const { user_id, borrower, amount, interest_amount, due_date } = req.body;
+    const { data, error } = await supabase
+      .from('users')
+      .select('role')
+      .eq('user_id', user_id)
+      .maybeSingle();
+    if (error || !data || data.role !== 'admin') {
+      return res.status(403).json({ error: 'Only admins can edit loans' });
+    }
+    if (!user_id || !borrower || !amount || !interest_amount || !due_date) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    const loan = await Loan.findByIdAndUpdate(
+      req.params.id,
+      { 
+        user_id, 
+        borrower, 
+        amount: parseFloat(amount), 
+        interest_amount: parseFloat(interest_amount), 
+        due_date: new Date(due_date) 
+      },
+      { new: true }
+    );
+    if (!loan) {
+      return res.status(404).json({ error: 'Loan not found' });
+    }
+    
+    try {
+      const { error: notificationError } = await supabase.from('notifications').insert({
+        user_id,
+        message: `Loan of ₹${amount} to ${borrower} updated`,
+      });
+      if (notificationError) console.error('Notification error:', notificationError);
+    } catch (err) {
+      console.error('Non-blocking notification error:', err);
+    }
+    res.json(loan);
+  } catch (error) {
+    console.error('Error editing loan:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.put('/api/loans/:id/collect', async (req, res) => {
+  try {
+    const { user_id, amount, interest_amount } = req.body;
+    const { data, error } = await supabase
+      .from('users')
+      .select('role')
+      .eq('user_id', user_id)
+      .maybeSingle();
+    if (error || !data || data.role !== 'admin') {
+      return res.status(403).json({ error: 'Only admins can mark loans as collected' });
+    }
+    if (!user_id || !amount || !interest_amount) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    const loan = await Loan.findById(req.params.id);
+    if (!loan) {
+      return res.status(404).json({ error: 'Loan not found' });
+    }
+    if (loan.is_collected) {
+      return res.status(400).json({ error: 'Loan already collected' });
+    }
+    const updatedLoan = await Loan.findByIdAndUpdate(
+      req.params.id,
+      { is_collected: true },
+      { new: true }
+    );
+    let trustBalance = await TrustBalance.findOne();
+    if (!trustBalance) {
+      trustBalance = new TrustBalance({ balance: 0 });
+    }
+    trustBalance.balance += parseFloat(amount) + parseFloat(interest_amount);
+    await trustBalance.save();
+    
+    try {
+      const { error: notificationError } = await supabase.from('notifications').insert({
+        user_id,
+        message: `Loan of ₹${amount} with interest ₹${interest_amount} marked as collected`,
+      });
+      if (notificationError) console.error('Notification error:', notificationError);
+    } catch (err) {
+      console.error('Non-blocking notification error:', err);
+    }
+    res.json(updatedLoan);
+  } catch (error) {
+    console.error('Error marking loan as collected:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -162,7 +266,7 @@ app.delete('/api/loans/:id', async (req, res) => {
     try {
       const { error: notificationError } = await supabase.from('notifications').insert({
         user_id: loan.user_id,
-        message: `Loan of $${loan.amount} deleted`,
+        message: `Loan of ₹${loan.amount} deleted`,
       });
       if (notificationError) console.error('Notification error:', notificationError);
     } catch (err) {
@@ -187,7 +291,7 @@ app.get('/api/expenses', async (req, res) => {
 
 app.post('/api/expenses', async (req, res) => {
   try {
-    const { user_id } = req.body;
+    const { user_id, description, amount } = req.body;
     const { data, error } = await supabase
       .from('users')
       .select('role')
@@ -196,17 +300,22 @@ app.post('/api/expenses', async (req, res) => {
     if (error || !data || data.role !== 'admin') {
       return res.status(403).json({ error: 'Only admins can add expenses' });
     }
-    const { description, amount } = req.body;
     if (!description || !amount) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
-    const expense = new Expense({ description, amount });
+    const expense = new Expense({ description, amount: parseFloat(amount) });
     await expense.save();
+    let trustBalance = await TrustBalance.findOne();
+    if (!trustBalance) {
+      trustBalance = new TrustBalance({ balance: 0 });
+    }
+    trustBalance.balance -= parseFloat(amount);
+    await trustBalance.save();
     
     try {
       const { error: notificationError } = await supabase.from('notifications').insert({
         user_id,
-        message: `Expense of $${amount} added: ${description}`,
+        message: `Expense of ₹${amount} added: ${description}`,
       });
       if (notificationError) console.error('Notification error:', notificationError);
     } catch (err) {
@@ -238,11 +347,17 @@ app.delete('/api/expenses/:id', async (req, res) => {
       return res.status(403).json({ error: 'Only admins can delete expenses' });
     }
     await Expense.deleteOne({ _id: req.params.id });
+    let trustBalance = await TrustBalance.findOne();
+    if (!trustBalance) {
+      trustBalance = new TrustBalance({ balance: 0 });
+    }
+    trustBalance.balance += parseFloat(expense.amount);
+    await trustBalance.save();
     
     try {
       const { error: notificationError } = await supabase.from('notifications').insert({
         user_id,
-        message: `Expense of $${expense.amount} deleted: ${expense.description}`,
+        message: `Expense of ₹${expense.amount} deleted: ${expense.description}`,
       });
       if (notificationError) console.error('Notification error:', notificationError);
     } catch (err) {
@@ -267,7 +382,7 @@ app.get('/api/donations', async (req, res) => {
 
 app.post('/api/donations', async (req, res) => {
   try {
-    const { user_id } = req.body;
+    const { user_id, description, amount } = req.body;
     const { data, error } = await supabase
       .from('users')
       .select('role')
@@ -276,17 +391,22 @@ app.post('/api/donations', async (req, res) => {
     if (error || !data || data.role !== 'admin') {
       return res.status(403).json({ error: 'Only admins can add donations' });
     }
-    const { description, amount } = req.body;
     if (!description || !amount) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
-    const donation = new Donation({ description, amount });
+    const donation = new Donation({ description, amount: parseFloat(amount) });
     await donation.save();
+    let trustBalance = await TrustBalance.findOne();
+    if (!trustBalance) {
+      trustBalance = new TrustBalance({ balance: 0 });
+    }
+    trustBalance.balance += parseFloat(amount);
+    await trustBalance.save();
     
     try {
       const { error: notificationError } = await supabase.from('notifications').insert({
         user_id,
-        message: `Donation of $${amount} added: ${description}`,
+        message: `Donation of ₹${amount} added: ${description}`,
       });
       if (notificationError) console.error('Notification error:', notificationError);
     } catch (err) {
@@ -318,11 +438,17 @@ app.delete('/api/donations/:id', async (req, res) => {
       return res.status(403).json({ error: 'Only admins can delete donations' });
     }
     await Donation.deleteOne({ _id: req.params.id });
+    let trustBalance = await TrustBalance.findOne();
+    if (!trustBalance) {
+      trustBalance = new TrustBalance({ balance: 0 });
+    }
+    trustBalance.balance -= parseFloat(donation.amount);
+    await trustBalance.save();
     
     try {
       const { error: notificationError } = await supabase.from('notifications').insert({
         user_id,
-        message: `Donation of $${donation.amount} deleted: ${donation.description}`,
+        message: `Donation of ₹${donation.amount} deleted: ${donation.description}`,
       });
       if (notificationError) console.error('Notification error:', notificationError);
     } catch (err) {

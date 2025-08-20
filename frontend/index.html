@@ -84,13 +84,20 @@
         noLoans: 'No loans found.',
         borrower: 'Borrower Name',
         amount: 'Amount',
-        interest: 'Interest Rate (%)',
+        interestAmount: 'Interest Amount',
         dueDate: 'Due Date',
+        status: 'Status',
         action: 'Action',
         description: 'Description',
         date: 'Date',
         delete: 'Delete',
         deleting: 'Deleting...',
+        edit: 'Edit',
+        save: 'Save',
+        cancel: 'Cancel',
+        markCollected: 'Mark as Collected',
+        collected: 'Collected',
+        pending: 'Pending',
         logout: 'Logout',
         admin: 'Admin',
         user: 'User',
@@ -120,13 +127,20 @@
         noLoans: 'ఎటువంటి రుణాలు కనుగొనబడలేదు.',
         borrower: 'రుణగ్రహీత పేరు',
         amount: 'మొత్తం',
-        interest: 'వడ్డీ రేటు (%)',
+        interestAmount: 'వడ్డీ మొత్తం',
         dueDate: 'గడువు తేదీ',
+        status: 'స్థితి',
         action: 'చర్య',
         description: 'వివరణ',
         date: 'తేదీ',
         delete: 'తొలగించు',
         deleting: 'తొలగిస్తోంది...',
+        edit: 'సవరించు',
+        save: 'సేవ్',
+        cancel: 'రద్దు',
+        markCollected: 'సేకరించినట్లు గుర్తించు',
+        collected: 'సేకరించబడింది',
+        pending: 'పెండింగ్',
         logout: 'లాగ్అవుట్',
         admin: 'అడ్మిన్',
         user: 'వినియోగదారు',
@@ -307,6 +321,8 @@
       const [newDonation, setNewDonation] = useState({ description: '', amount: '' });
       const [loading, setLoading] = useState(false);
       const [error, setError] = useState('');
+      const [editingLoanId, setEditingLoanId] = useState(null);
+      const [editLoan, setEditLoan] = useState({ borrower: '', amount: '', interest_amount: '', due_date: '' });
 
       useEffect(() => {
         fetchDashboardData();
@@ -346,11 +362,84 @@
         setLoading(true);
         setError('');
         try {
-          await axios.post(`${API_URL}/loans`, { ...newLoan, user_id: user.id });
+          const interestAmount = (parseFloat(newLoan.amount) * parseFloat(newLoan.interest) / 100).toFixed(2);
+          await axios.post(`${API_URL}/loans`, { 
+            ...newLoan, 
+            interest_amount: interestAmount, 
+            user_id: user.id,
+            is_collected: false 
+          });
           setNewLoan({ borrower: '', amount: '', interest: '' });
           fetchDashboardData();
         } catch (error) {
           console.error('Error adding loan:', error);
+          setError(error.response?.data?.error || translations[language].failedTryAgain);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const editLoanStart = (loan) => {
+        setEditingLoanId(loan._id);
+        setEditLoan({
+          borrower: loan.borrower,
+          amount: loan.amount,
+          interest_amount: loan.interest_amount,
+          due_date: new Date(loan.due_date).toISOString().split('T')[0]
+        });
+      };
+
+      const saveLoanEdit = async (loanId) => {
+        setLoading(true);
+        setError('');
+        try {
+          await axios.put(`${API_URL}/loans/${loanId}`, { 
+            ...editLoan, 
+            user_id: user.id,
+            due_date: new Date(editLoan.due_date).toISOString()
+          });
+          setEditingLoanId(null);
+          setEditLoan({ borrower: '', amount: '', interest_amount: '', due_date: '' });
+          fetchDashboardData();
+        } catch (error) {
+          console.error('Error editing loan:', error);
+          setError(error.response?.data?.error || translations[language].failedTryAgain);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const cancelEdit = () => {
+        setEditingLoanId(null);
+        setEditLoan({ borrower: '', amount: '', interest_amount: '', due_date: '' });
+      };
+
+      const markLoanCollected = async (loanId, amount, interestAmount) => {
+        setLoading(true);
+        setError('');
+        try {
+          await axios.put(`${API_URL}/loans/${loanId}/collect`, { 
+            user_id: user.id,
+            amount: parseFloat(amount),
+            interest_amount: parseFloat(interestAmount)
+          });
+          fetchDashboardData();
+        } catch (error) {
+          console.error('Error marking loan as collected:', error);
+          setError(error.response?.data?.error || translations[language].failedTryAgain);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const deleteLoan = async (loanId) => {
+        setLoading(true);
+        setError('');
+        try {
+          await axios.delete(`${API_URL}/loans/${loanId}`, { data: { user_id: user.id } });
+          fetchDashboardData();
+        } catch (error) {
+          console.error('Error deleting loan:', error);
           setError(error.response?.data?.error || translations[language].failedTryAgain);
         } finally {
           setLoading(false);
@@ -383,20 +472,6 @@
           fetchDashboardData();
         } catch (error) {
           console.error('Error adding donation:', error);
-          setError(error.response?.data?.error || translations[language].failedTryAgain);
-        } finally {
-          setLoading(false);
-        }
-      };
-
-      const deleteLoan = async (loanId) => {
-        setLoading(true);
-        setError('');
-        try {
-          await axios.delete(`${API_URL}/loans/${loanId}`, { data: { user_id: user.id } });
-          fetchDashboardData();
-        } catch (error) {
-          console.error('Error deleting loan:', error);
           setError(error.response?.data?.error || translations[language].failedTryAgain);
         } finally {
           setLoading(false);
@@ -562,27 +637,100 @@
                   <tr className="bg-gray-100">
                     <th className="border p-2 sm:p-3 text-left">{translations[language].borrower}</th>
                     <th className="border p-2 sm:p-3 text-left">{translations[language].amount}</th>
-                    <th className="border p-2 sm:p-3 text-left">{translations[language].interest}</th>
+                    <th className="border p-2 sm:p-3 text-left">{translations[language].interestAmount}</th>
                     <th className="border p-2 sm:p-3 text-left">{translations[language].dueDate}</th>
+                    <th className="border p-2 sm:p-3 text-left">{translations[language].status}</th>
                     <th className="border p-2 sm:p-3 text-left">{translations[language].action}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loans.map((loan, index) => (
                     <tr key={loan._id} className={`table-row ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
-                      <td className="border p-2 sm:p-3">{loan.borrower}</td>
-                      <td className="border p-2 sm:p-3">{translations[language].currency}{loan.amount}</td>
-                      <td className="border p-2 sm:p-3">{loan.interest}%</td>
-                      <td className="border p-2 sm:p-3">{new Date(loan.due_date).toLocaleDateString()}</td>
-                      <td className="border p-2 sm:p-3">
-                        <button
-                          onClick={() => deleteLoan(loan._id)}
-                          className="bg-red-600 text-white px-2 sm:px-3 py-1 rounded-lg text-xs sm:text-sm hover:bg-red-700 hover-scale disabled:bg-red-400"
-                          disabled={loading}
-                        >
-                          {loading ? translations[language].deleting : translations[language].delete}
-                        </button>
-                      </td>
+                      {editingLoanId === loan._id ? (
+                        <>
+                          <td className="border p-2 sm:p-3">
+                            <input
+                              type="text"
+                              value={editLoan.borrower}
+                              onChange={(e) => setEditLoan({ ...editLoan, borrower: e.target.value })}
+                              className="w-full p-1 border rounded"
+                            />
+                          </td>
+                          <td className="border p-2 sm:p-3">
+                            <input
+                              type="number"
+                              value={editLoan.amount}
+                              onChange={(e) => setEditLoan({ ...editLoan, amount: e.target.value })}
+                              className="w-full p-1 border rounded"
+                            />
+                          </td>
+                          <td className="border p-2 sm:p-3">
+                            <input
+                              type="number"
+                              value={editLoan.interest_amount}
+                              onChange={(e) => setEditLoan({ ...editLoan, interest_amount: e.target.value })}
+                              className="w-full p-1 border rounded"
+                            />
+                          </td>
+                          <td className="border p-2 sm:p-3">
+                            <input
+                              type="date"
+                              value={editLoan.due_date}
+                              onChange={(e) => setEditLoan({ ...editLoan, due_date: e.target.value })}
+                              className="w-full p-1 border rounded"
+                            />
+                          </td>
+                          <td className="border p-2 sm:p-3">{loan.is_collected ? translations[language].collected : translations[language].pending}</td>
+                          <td className="border p-2 sm:p-3 flex space-x-2">
+                            <button
+                              onClick={() => saveLoanEdit(loan._id)}
+                              className="bg-green-600 text-white px-2 sm:px-3 py-1 rounded-lg text-xs sm:text-sm hover:bg-green-700 hover-scale disabled:bg-green-400"
+                              disabled={loading}
+                            >
+                              {translations[language].save}
+                            </button>
+                            <button
+                              onClick={cancelEdit}
+                              className="bg-gray-600 text-white px-2 sm:px-3 py-1 rounded-lg text-xs sm:text-sm hover:bg-gray-700 hover-scale"
+                            >
+                              {translations[language].cancel}
+                            </button>
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          <td className="border p-2 sm:p-3">{loan.borrower}</td>
+                          <td className="border p-2 sm:p-3">{translations[language].currency}{loan.amount}</td>
+                          <td className="border p-2 sm:p-3">{translations[language].currency}{loan.interest_amount}</td>
+                          <td className="border p-2 sm:p-3">{new Date(loan.due_date).toLocaleDateString()}</td>
+                          <td className="border p-2 sm:p-3">{loan.is_collected ? translations[language].collected : translations[language].pending}</td>
+                          <td className="border p-2 sm:p-3 flex space-x-2">
+                            {!loan.is_collected && (
+                              <button
+                                onClick={() => markLoanCollected(loan._id, loan.amount, loan.interest_amount)}
+                                className="bg-blue-600 text-white px-2 sm:px-3 py-1 rounded-lg text-xs sm:text-sm hover:bg-blue-700 hover-scale disabled:bg-blue-400"
+                                disabled={loading}
+                              >
+                                {translations[language].markCollected}
+                              </button>
+                            )}
+                            <button
+                              onClick={() => editLoanStart(loan)}
+                              className="bg-yellow-600 text-white px-2 sm:px-3 py-1 rounded-lg text-xs sm:text-sm hover:bg-yellow-700 hover-scale disabled:bg-yellow-400"
+                              disabled={loading}
+                            >
+                              {translations[language].edit}
+                            </button>
+                            <button
+                              onClick={() => deleteLoan(loan._id)}
+                              className="bg-red-600 text-white px-2 sm:px-3 py-1 rounded-lg text-xs sm:text-sm hover:bg-red-700 hover-scale disabled:bg-red-400"
+                              disabled={loading}
+                            >
+                              {loading ? translations[language].deleting : translations[language].delete}
+                            </button>
+                          </td>
+                        </>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -762,8 +910,9 @@
                   <tr className="bg-gray-100">
                     <th className="border p-2 sm:p-3 text-left">{translations[language].borrower}</th>
                     <th className="border p-2 sm:p-3 text-left">{translations[language].amount}</th>
-                    <th className="border p-2 sm:p-3 text-left">{translations[language].interest}</th>
+                    <th className="border p-2 sm:p-3 text-left">{translations[language].interestAmount}</th>
                     <th className="border p-2 sm:p-3 text-left">{translations[language].dueDate}</th>
+                    <th className="border p-2 sm:p-3 text-left">{translations[language].status}</th>
                     <th className="border p-2 sm:p-3 text-left">{translations[language].action}</th>
                   </tr>
                 </thead>
@@ -772,8 +921,9 @@
                     <tr key={loan._id} className={`table-row ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
                       <td className="border p-2 sm:p-3">{loan.borrower}</td>
                       <td className="border p-2 sm:p-3">{translations[language].currency}{loan.amount}</td>
-                      <td className="border p-2 sm:p-3">{loan.interest}%</td>
+                      <td className="border p-2 sm:p-3">{translations[language].currency}{loan.interest_amount}</td>
                       <td className="border p-2 sm:p-3">{new Date(loan.due_date).toLocaleDateString()}</td>
+                      <td className="border p-2 sm:p-3">{loan.is_collected ? translations[language].collected : translations[language].pending}</td>
                       <td className="border p-2 sm:p-3">
                         <button
                           onClick={() => deleteLoan(loan._id)}
