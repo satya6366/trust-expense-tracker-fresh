@@ -39,7 +39,8 @@ const loanSchema = new mongoose.Schema({
   interest_amount: Number,
   due_date: Date,
   created_at: { type: Date, default: Date.now },
-  is_collected: { type: Boolean, default: false },
+  is_amount_collected: { type: Boolean, default: false },
+  is_interest_collected: { type: Boolean, default: false },
 });
 
 const expenseSchema = new mongoose.Schema({
@@ -126,7 +127,8 @@ app.post('/api/loans', async (req, res) => {
       amount: parseFloat(amount), 
       interest_amount: parseFloat(interest_amount), 
       due_date: dueDate,
-      is_collected: false 
+      is_amount_collected: false,
+      is_interest_collected: false 
     });
     await loan.save();
     
@@ -191,43 +193,43 @@ app.put('/api/loans/:id', async (req, res) => {
   }
 });
 
-app.put('/api/loans/:id/collect', async (req, res) => {
+app.put('/api/loans/:id/collect/amount', async (req, res) => {
   try {
-    const { user_id, amount, interest_amount } = req.body;
+    const { user_id, amount } = req.body;
     const { data, error } = await supabase
       .from('users')
       .select('role')
       .eq('user_id', user_id)
       .maybeSingle();
     if (error || !data || data.role !== 'admin') {
-      return res.status(403).json({ error: 'Only admins can mark loans as collected' });
+      return res.status(403).json({ error: 'Only admins can mark loan amount as collected' });
     }
-    if (!user_id || !amount || !interest_amount) {
+    if (!user_id || !amount) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
     const loan = await Loan.findById(req.params.id);
     if (!loan) {
       return res.status(404).json({ error: 'Loan not found' });
     }
-    if (loan.is_collected) {
-      return res.status(400).json({ error: 'Loan already collected' });
+    if (loan.is_amount_collected) {
+      return res.status(400).json({ error: 'Loan amount already collected' });
     }
     const updatedLoan = await Loan.findByIdAndUpdate(
       req.params.id,
-      { is_collected: true },
+      { is_amount_collected: true },
       { new: true }
     );
     let trustBalance = await TrustBalance.findOne();
     if (!trustBalance) {
       trustBalance = new TrustBalance({ balance: 0 });
     }
-    trustBalance.balance += parseFloat(amount) + parseFloat(interest_amount);
+    trustBalance.balance += parseFloat(amount);
     await trustBalance.save();
     
     try {
       const { error: notificationError } = await supabase.from('notifications').insert({
         user_id,
-        message: `Loan of ₹${amount} with interest ₹${interest_amount} marked as collected`,
+        message: `Loan amount of ₹${amount} marked as collected for ${loan.borrower}`,
       });
       if (notificationError) console.error('Notification error:', notificationError);
     } catch (err) {
@@ -235,7 +237,56 @@ app.put('/api/loans/:id/collect', async (req, res) => {
     }
     res.json(updatedLoan);
   } catch (error) {
-    console.error('Error marking loan as collected:', error);
+    console.error('Error marking loan amount as collected:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.put('/api/loans/:id/collect/interest', async (req, res) => {
+  try {
+    const { user_id, interest_amount } = req.body;
+    const { data, error } = await supabase
+      .from('users')
+      .select('role')
+      .eq('user_id', user_id)
+      .maybeSingle();
+    if (error || !data || data.role !== 'admin') {
+      return res.status(403).json({ error: 'Only admins can mark interest amount as collected' });
+    }
+    if (!user_id || !interest_amount) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    const loan = await Loan.findById(req.params.id);
+    if (!loan) {
+      return res.status(404).json({ error: 'Loan not found' });
+    }
+    if (loan.is_interest_collected) {
+      return res.status(400).json({ error: 'Interest amount already collected' });
+    }
+    const updatedLoan = await Loan.findByIdAndUpdate(
+      req.params.id,
+      { is_interest_collected: true },
+      { new: true }
+    );
+    let trustBalance = await TrustBalance.findOne();
+    if (!trustBalance) {
+      trustBalance = new TrustBalance({ balance: 0 });
+    }
+    trustBalance.balance += parseFloat(interest_amount);
+    await trustBalance.save();
+    
+    try {
+      const { error: notificationError } = await supabase.from('notifications').insert({
+        user_id,
+        message: `Interest amount of ₹${interest_amount} marked as collected for ${loan.borrower}`,
+      });
+      if (notificationError) console.error('Notification error:', notificationError);
+    } catch (err) {
+      console.error('Non-blocking notification error:', err);
+    }
+    res.json(updatedLoan);
+  } catch (error) {
+    console.error('Error marking interest amount as collected:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
